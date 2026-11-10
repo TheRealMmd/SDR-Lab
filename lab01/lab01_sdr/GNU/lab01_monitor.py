@@ -1,0 +1,374 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+
+#
+# SPDX-License-Identifier: GPL-3.0
+#
+# GNU Radio Python Flow Graph
+# Title: Not titled yet
+# GNU Radio version: 3.10.12.0
+
+from PyQt5 import Qt
+from gnuradio import qtgui
+from PyQt5 import QtCore
+from PyQt5.QtCore import QObject, pyqtSlot
+from gnuradio import gr
+from gnuradio.filter import firdes
+from gnuradio.fft import window
+import sys
+import signal
+from PyQt5 import Qt
+from argparse import ArgumentParser
+from gnuradio.eng_arg import eng_float, intx
+from gnuradio import eng_notation
+from gnuradio import iio
+import lab01_monitor_epy_block_0 as epy_block_0  # embedded python block
+import sip
+import threading
+
+
+
+class lab01_monitor(gr.top_block, Qt.QWidget):
+
+    def __init__(self):
+        gr.top_block.__init__(self, "Not titled yet", catch_exceptions=True)
+        Qt.QWidget.__init__(self)
+        self.setWindowTitle("Not titled yet")
+        qtgui.util.check_set_qss()
+        try:
+            self.setWindowIcon(Qt.QIcon.fromTheme('gnuradio-grc'))
+        except BaseException as exc:
+            print(f"Qt GUI: Could not set Icon: {str(exc)}", file=sys.stderr)
+        self.top_scroll_layout = Qt.QVBoxLayout()
+        self.setLayout(self.top_scroll_layout)
+        self.top_scroll = Qt.QScrollArea()
+        self.top_scroll.setFrameStyle(Qt.QFrame.NoFrame)
+        self.top_scroll_layout.addWidget(self.top_scroll)
+        self.top_scroll.setWidgetResizable(True)
+        self.top_widget = Qt.QWidget()
+        self.top_scroll.setWidget(self.top_widget)
+        self.top_layout = Qt.QVBoxLayout(self.top_widget)
+        self.top_grid_layout = Qt.QGridLayout()
+        self.top_layout.addLayout(self.top_grid_layout)
+
+        self.settings = Qt.QSettings("gnuradio/flowgraphs", "lab01_monitor")
+
+        try:
+            geometry = self.settings.value("geometry")
+            if geometry:
+                self.restoreGeometry(geometry)
+        except BaseException as exc:
+            print(f"Qt GUI: Could not restore geometry: {str(exc)}", file=sys.stderr)
+        self.flowgraph_started = threading.Event()
+
+        ##################################################
+        # Variables
+        ##################################################
+        self.samp_rate = samp_rate = 2600000
+        self.lo_shift = lo_shift = 0
+        self.fc = fc = 945e6
+        self.uri = uri =  "ip:192.168.1.10"
+        self.team = team = "ersa"
+        self.rf_gain = rf_gain = 20
+        self.rec_sec = rec_sec =  min(4.0, 80e6/(8*samp_rate))
+        self.rec = rec = False
+        self.f_tune = f_tune = int(fc + lo_shift)
+
+        ##################################################
+        # Blocks
+        ##################################################
+
+        # Create the options list
+        self._samp_rate_options = [2600000, 5000000, 10000000, 20000000]
+        # Create the labels list
+        self._samp_rate_labels = ['2.6 MS/s', '5 MS/s', '10 MS/s', '20 MS/s']
+        # Create the combo box
+        self._samp_rate_tool_bar = Qt.QToolBar(self)
+        self._samp_rate_tool_bar.addWidget(Qt.QLabel("Sample rate" + ": "))
+        self._samp_rate_combo_box = Qt.QComboBox()
+        self._samp_rate_tool_bar.addWidget(self._samp_rate_combo_box)
+        for _label in self._samp_rate_labels: self._samp_rate_combo_box.addItem(_label)
+        self._samp_rate_callback = lambda i: Qt.QMetaObject.invokeMethod(self._samp_rate_combo_box, "setCurrentIndex", Qt.Q_ARG("int", self._samp_rate_options.index(i)))
+        self._samp_rate_callback(self.samp_rate)
+        self._samp_rate_combo_box.currentIndexChanged.connect(
+            lambda i: self.set_samp_rate(self._samp_rate_options[i]))
+        # Create the radio buttons
+        self.top_layout.addWidget(self._samp_rate_tool_bar)
+        self._rf_gain_range = qtgui.Range(0, 30, 1, 20, 200)
+        self._rf_gain_win = qtgui.RangeWidget(self._rf_gain_range, self.set_rf_gain, "Rf Gain (db)", "counter", float, QtCore.Qt.Horizontal)
+        self.top_layout.addWidget(self._rf_gain_win)
+        _rec_check_box = Qt.QCheckBox("Record I/Q")
+        self._rec_choices = {True: True, False: False}
+        self._rec_choices_inv = dict((v,k) for k,v in self._rec_choices.items())
+        self._rec_callback = lambda i: Qt.QMetaObject.invokeMethod(_rec_check_box, "setChecked", Qt.Q_ARG("bool", self._rec_choices_inv[i]))
+        self._rec_callback(self.rec)
+        _rec_check_box.stateChanged.connect(lambda i: self.set_rec(self._rec_choices[bool(i)]))
+        self.top_layout.addWidget(_rec_check_box)
+        self._fc_range = qtgui.Range(70e6, 3.8e9, 16e6, 945e6, 200)
+        self._fc_win = qtgui.RangeWidget(self._fc_range, self.set_fc, "fc(hz)", "counter", float, QtCore.Qt.Horizontal)
+        self.top_layout.addWidget(self._fc_win)
+        self.qtgui_waterfall_sink_x_0 = qtgui.waterfall_sink_c(
+            1024, #size
+            window.WIN_BLACKMAN_hARRIS, #wintype
+            f_tune, #fc
+            samp_rate, #bw
+            "", #name
+            1, #number of inputs
+            None # parent
+        )
+        self.qtgui_waterfall_sink_x_0.set_update_time(0.10)
+        self.qtgui_waterfall_sink_x_0.enable_grid(False)
+        self.qtgui_waterfall_sink_x_0.enable_axis_labels(True)
+
+
+
+        labels = ['', '', '', '', '',
+                  '', '', '', '', '']
+        colors = [0, 0, 0, 0, 0,
+                  0, 0, 0, 0, 0]
+        alphas = [1.0, 1.0, 1.0, 1.0, 1.0,
+                  1.0, 1.0, 1.0, 1.0, 1.0]
+
+        for i in range(1):
+            if len(labels[i]) == 0:
+                self.qtgui_waterfall_sink_x_0.set_line_label(i, "Data {0}".format(i))
+            else:
+                self.qtgui_waterfall_sink_x_0.set_line_label(i, labels[i])
+            self.qtgui_waterfall_sink_x_0.set_color_map(i, colors[i])
+            self.qtgui_waterfall_sink_x_0.set_line_alpha(i, alphas[i])
+
+        self.qtgui_waterfall_sink_x_0.set_intensity_range(-110, -20)
+
+        self._qtgui_waterfall_sink_x_0_win = sip.wrapinstance(self.qtgui_waterfall_sink_x_0.qwidget(), Qt.QWidget)
+
+        self.top_layout.addWidget(self._qtgui_waterfall_sink_x_0_win)
+        self.qtgui_time_sink_x_0 = qtgui.time_sink_c(
+            1024, #size
+            samp_rate, #samp_rate
+            "", #name
+            1, #number of inputs
+            None # parent
+        )
+        self.qtgui_time_sink_x_0.set_update_time(0.10)
+        self.qtgui_time_sink_x_0.set_y_axis(-1, 1)
+
+        self.qtgui_time_sink_x_0.set_y_label('Amplitude', "")
+
+        self.qtgui_time_sink_x_0.enable_tags(True)
+        self.qtgui_time_sink_x_0.set_trigger_mode(qtgui.TRIG_MODE_FREE, qtgui.TRIG_SLOPE_POS, 0.0, 0, 0, "")
+        self.qtgui_time_sink_x_0.enable_autoscale(False)
+        self.qtgui_time_sink_x_0.enable_grid(False)
+        self.qtgui_time_sink_x_0.enable_axis_labels(True)
+        self.qtgui_time_sink_x_0.enable_control_panel(False)
+        self.qtgui_time_sink_x_0.enable_stem_plot(False)
+
+
+        labels = ['Signal 1', 'Signal 2', 'Signal 3', 'Signal 4', 'Signal 5',
+            'Signal 6', 'Signal 7', 'Signal 8', 'Signal 9', 'Signal 10']
+        widths = [1, 1, 1, 1, 1,
+            1, 1, 1, 1, 1]
+        colors = ['blue', 'red', 'green', 'black', 'cyan',
+            'magenta', 'yellow', 'dark red', 'dark green', 'dark blue']
+        alphas = [1.0, 1.0, 1.0, 1.0, 1.0,
+            1.0, 1.0, 1.0, 1.0, 1.0]
+        styles = [1, 1, 1, 1, 1,
+            1, 1, 1, 1, 1]
+        markers = [-1, -1, -1, -1, -1,
+            -1, -1, -1, -1, -1]
+
+
+        for i in range(2):
+            if len(labels[i]) == 0:
+                if (i % 2 == 0):
+                    self.qtgui_time_sink_x_0.set_line_label(i, "Re{{Data {0}}}".format(i/2))
+                else:
+                    self.qtgui_time_sink_x_0.set_line_label(i, "Im{{Data {0}}}".format(i/2))
+            else:
+                self.qtgui_time_sink_x_0.set_line_label(i, labels[i])
+            self.qtgui_time_sink_x_0.set_line_width(i, widths[i])
+            self.qtgui_time_sink_x_0.set_line_color(i, colors[i])
+            self.qtgui_time_sink_x_0.set_line_style(i, styles[i])
+            self.qtgui_time_sink_x_0.set_line_marker(i, markers[i])
+            self.qtgui_time_sink_x_0.set_line_alpha(i, alphas[i])
+
+        self._qtgui_time_sink_x_0_win = sip.wrapinstance(self.qtgui_time_sink_x_0.qwidget(), Qt.QWidget)
+        self.top_layout.addWidget(self._qtgui_time_sink_x_0_win)
+        self.qtgui_freq_sink_x_0 = qtgui.freq_sink_c(
+            1024, #size
+            window.WIN_BLACKMAN_hARRIS, #wintype
+            f_tune, #fc
+            samp_rate, #bw
+            "", #name
+            1,
+            None # parent
+        )
+        self.qtgui_freq_sink_x_0.set_update_time(0.10)
+        self.qtgui_freq_sink_x_0.set_y_axis((-120), 0)
+        self.qtgui_freq_sink_x_0.set_y_label('Relative Gain', 'dB')
+        self.qtgui_freq_sink_x_0.set_trigger_mode(qtgui.TRIG_MODE_FREE, 0.0, 0, "")
+        self.qtgui_freq_sink_x_0.enable_autoscale(False)
+        self.qtgui_freq_sink_x_0.enable_grid(False)
+        self.qtgui_freq_sink_x_0.set_fft_average(1.0)
+        self.qtgui_freq_sink_x_0.enable_axis_labels(True)
+        self.qtgui_freq_sink_x_0.enable_control_panel(True)
+        self.qtgui_freq_sink_x_0.set_fft_window_normalized(False)
+
+
+
+        labels = ['', '', '', '', '',
+            '', '', '', '', '']
+        widths = [1, 1, 1, 1, 1,
+            1, 1, 1, 1, 1]
+        colors = ["blue", "red", "green", "black", "cyan",
+            "magenta", "yellow", "dark red", "dark green", "dark blue"]
+        alphas = [1.0, 1.0, 1.0, 1.0, 1.0,
+            1.0, 1.0, 1.0, 1.0, 1.0]
+
+        for i in range(1):
+            if len(labels[i]) == 0:
+                self.qtgui_freq_sink_x_0.set_line_label(i, "Data {0}".format(i))
+            else:
+                self.qtgui_freq_sink_x_0.set_line_label(i, labels[i])
+            self.qtgui_freq_sink_x_0.set_line_width(i, widths[i])
+            self.qtgui_freq_sink_x_0.set_line_color(i, colors[i])
+            self.qtgui_freq_sink_x_0.set_line_alpha(i, alphas[i])
+
+        self._qtgui_freq_sink_x_0_win = sip.wrapinstance(self.qtgui_freq_sink_x_0.qwidget(), Qt.QWidget)
+        self.top_layout.addWidget(self._qtgui_freq_sink_x_0_win)
+        self._lo_shift_range = qtgui.Range(-500e3, 500e3, 10e3, 0, 200)
+        self._lo_shift_win = qtgui.RangeWidget(self._lo_shift_range, self.set_lo_shift, "Lo Shift(hz)", "counter", float, QtCore.Qt.Vertical)
+        self.top_layout.addWidget(self._lo_shift_win)
+        self.iio_pluto_source_0 = iio.fmcomms2_source_fc32(uri if uri else iio.get_pluto_uri(), [True, True], 32768)
+        self.iio_pluto_source_0.set_len_tag_key('packet_len')
+        self.iio_pluto_source_0.set_frequency(f_tune)
+        self.iio_pluto_source_0.set_samplerate(samp_rate)
+        self.iio_pluto_source_0.set_gain_mode(0, 'manual')
+        self.iio_pluto_source_0.set_gain(0, rf_gain)
+        self.iio_pluto_source_0.set_quadrature(True)
+        self.iio_pluto_source_0.set_rfdc(True)
+        self.iio_pluto_source_0.set_bbdc(True)
+        self.iio_pluto_source_0.set_filter_params('Off', '', 0, 0)
+        self.epy_block_0 = epy_block_0.blk(team=team, lab=1, fc=f_tune, fs=samp_rate, gain=rf_gain, record=rec, max_seconds=rec_sec, folder="recordings")
+
+
+        ##################################################
+        # Connections
+        ##################################################
+        self.connect((self.iio_pluto_source_0, 0), (self.epy_block_0, 0))
+        self.connect((self.iio_pluto_source_0, 0), (self.qtgui_freq_sink_x_0, 0))
+        self.connect((self.iio_pluto_source_0, 0), (self.qtgui_time_sink_x_0, 0))
+        self.connect((self.iio_pluto_source_0, 0), (self.qtgui_waterfall_sink_x_0, 0))
+
+
+    def closeEvent(self, event):
+        self.settings = Qt.QSettings("gnuradio/flowgraphs", "lab01_monitor")
+        self.settings.setValue("geometry", self.saveGeometry())
+        self.stop()
+        self.wait()
+
+        event.accept()
+
+    def get_samp_rate(self):
+        return self.samp_rate
+
+    def set_samp_rate(self, samp_rate):
+        self.samp_rate = samp_rate
+        self.set_rec_sec( min(4.0, 80e6/(8*self.samp_rate)))
+        self._samp_rate_callback(self.samp_rate)
+        self.epy_block_0.fs = self.samp_rate
+        self.iio_pluto_source_0.set_samplerate(self.samp_rate)
+        self.qtgui_freq_sink_x_0.set_frequency_range(self.f_tune, self.samp_rate)
+        self.qtgui_time_sink_x_0.set_samp_rate(self.samp_rate)
+        self.qtgui_waterfall_sink_x_0.set_frequency_range(self.f_tune, self.samp_rate)
+
+    def get_lo_shift(self):
+        return self.lo_shift
+
+    def set_lo_shift(self, lo_shift):
+        self.lo_shift = lo_shift
+        self.set_f_tune(int(self.fc + self.lo_shift))
+
+    def get_fc(self):
+        return self.fc
+
+    def set_fc(self, fc):
+        self.fc = fc
+        self.set_f_tune(int(self.fc + self.lo_shift))
+
+    def get_uri(self):
+        return self.uri
+
+    def set_uri(self, uri):
+        self.uri = uri
+
+    def get_team(self):
+        return self.team
+
+    def set_team(self, team):
+        self.team = team
+        self.epy_block_0.team = self.team
+
+    def get_rf_gain(self):
+        return self.rf_gain
+
+    def set_rf_gain(self, rf_gain):
+        self.rf_gain = rf_gain
+        self.epy_block_0.gain = self.rf_gain
+        self.iio_pluto_source_0.set_gain(0, self.rf_gain)
+
+    def get_rec_sec(self):
+        return self.rec_sec
+
+    def set_rec_sec(self, rec_sec):
+        self.rec_sec = rec_sec
+        self.epy_block_0.max_seconds = self.rec_sec
+
+    def get_rec(self):
+        return self.rec
+
+    def set_rec(self, rec):
+        self.rec = rec
+        self._rec_callback(self.rec)
+        self.epy_block_0.record = self.rec
+
+    def get_f_tune(self):
+        return self.f_tune
+
+    def set_f_tune(self, f_tune):
+        self.f_tune = f_tune
+        self.epy_block_0.fc = self.f_tune
+        self.iio_pluto_source_0.set_frequency(self.f_tune)
+        self.qtgui_freq_sink_x_0.set_frequency_range(self.f_tune, self.samp_rate)
+        self.qtgui_waterfall_sink_x_0.set_frequency_range(self.f_tune, self.samp_rate)
+
+
+
+
+def main(top_block_cls=lab01_monitor, options=None):
+
+    qapp = Qt.QApplication(sys.argv)
+
+    tb = top_block_cls()
+
+    tb.start()
+    tb.flowgraph_started.set()
+
+    tb.show()
+
+    def sig_handler(sig=None, frame=None):
+        tb.stop()
+        tb.wait()
+
+        Qt.QApplication.quit()
+
+    signal.signal(signal.SIGINT, sig_handler)
+    signal.signal(signal.SIGTERM, sig_handler)
+
+    timer = Qt.QTimer()
+    timer.start(500)
+    timer.timeout.connect(lambda: None)
+
+    qapp.exec_()
+
+if __name__ == '__main__':
+    main()
